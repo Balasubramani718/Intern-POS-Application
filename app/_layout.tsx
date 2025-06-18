@@ -1,29 +1,22 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+import { router, Stack } from "expo-router";
+import { Dimensions, StatusBar, Text, TouchableOpacity, View } from "react-native";
 
-import { useColorScheme } from '@/hooks/useColorScheme';
-
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
-  if (!loaded) {
-    // Async font loading only occurs in development.
-    return null;
-  }
-
+  export default function RootLayout() {
+        const {width,height}=Dimensions.get("screen");
+         const homeRoute = () =>{
+                router.replace('/home')
+            }
+    
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <>
+    <View style={{backgroundColor:"#198754", width:width, height:height*0.1, flexDirection:"row-reverse", padding:30}}>
+      <TouchableOpacity><Text style={{color:"white", fontSize:10, fontFamily:"Poppins-ExtraBold", top:32, right:7, borderBottomWidth:2, borderBottomColor:"#D6F4C3"}} onPress={homeRoute}>  Home  </Text></TouchableOpacity>
+      <Text style={{color:"white", fontSize:22, fontFamily:"Poppins-ExtraBold",top:20, left:width*0.45}}>KRSS Mart</Text>
+    </View>
+      <Stack screenOptions={{headerShown:false}} />
+      <StatusBar hidden={true}/>
+    </>
   );
 }
+
+
