@@ -17,7 +17,7 @@ export default function Index(){
 },0.100)
   },[]
 )
-  const {width, height} = Dimensions.get('window');
+  const {width, height} = Dimensions.get('screen');
   
   if (!fontsLoaded) {
     return <ActivityIndicator size="large" style={{ flex: 1 }} />;

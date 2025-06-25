@@ -17,6 +17,9 @@ export default function home(){
     const unitsRoute = () =>{
         router.replace('/units')
     }
+    const itemRoute = () =>{
+        router.replace('/item')
+    }
 
   return (
     <>
@@ -24,6 +27,8 @@ export default function home(){
       <TouchableOpacity><Text style={{color:"white", fontSize:10, fontFamily:"Poppins-ExtraBold", top:25, left:10, backgroundColor:"#198754",padding:10,borderRadius:15}} onPress={categoryRoute}> Category  </Text></TouchableOpacity>
       <Text>{"\n"}</Text>
       <TouchableOpacity><Text style={{color:"white", fontSize:10, fontFamily:"Poppins-ExtraBold", top:25, left:10, backgroundColor:"#198754",padding:10,borderRadius:15}} onPress={unitsRoute}> Units of Measurement  </Text></TouchableOpacity>
+      <Text>{"\n"}</Text>
+      <TouchableOpacity><Text style={{color:"white", fontSize:10, fontFamily:"Poppins-ExtraBold", top:25, left:10, backgroundColor:"#198754",padding:10,borderRadius:15}} onPress={itemRoute}> Items  </Text></TouchableOpacity>
 
     </View>
     </>
