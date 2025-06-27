@@ -18,7 +18,6 @@ const {width, height} = Dimensions.get('window');
 const  handleLogin= async ()=>{
   const result = await loginUser(username,password);
   if (result.success) {
-    console.log('Login success:', result.data);
     router.push('/home'); // or your desired route
   } else {
     alert('Login failed: ' + result.message);
