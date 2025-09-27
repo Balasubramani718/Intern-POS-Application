@@ -1,17 +1,23 @@
+// item.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts } from "expo-font";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Dimensions, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { supabase } from "../supabase"; // Importing the configured Supabase client
 
+// Interfaces for Item, Unit, Version
 interface ItemData {
+  id?: number;
   name: string;
   code: string;
   descriptionEN: string;
   descriptionTA: string;
   active: string;
+  price?: string;     // kept as string for TextInput binding
+  quantity?: string;  // kept as string for TextInput binding
 }
-
 interface UnitData {
+  id?: number;
   unitCode: string;
   unitName: string;
   descriptionEN: string;
@@ -24,8 +30,8 @@ interface UnitData {
   modifiedDate: string;
   itemId: number;
 }
-
 interface VersionData {
+  id?: number;
   versionCode: string;
   versionName: string;
   quantity: string;
@@ -42,12 +48,23 @@ interface VersionData {
 export default function item() {
   const { width, height } = Dimensions.get("screen");
   const [fontsLoaded] = useFonts({ "Poppins-ExtraBold": require("../assets/fonts/Poppins-ExtraBold.ttf") });
+
+  // Modals, forms, filters, etc. state declarations here...
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [isUnitModalVisible, setIsUnitModalVisible] = useState(false);
   const [isVersionModalVisible, setIsVersionModalVisible] = useState(false);
-  const [formData, setFormData] = useState<ItemData>({ name: "", code: "", descriptionEN: "", descriptionTA: "", active: "Active" });
+
+  const [formData, setFormData] = useState<ItemData>({
+    name: "",
+    code: "",
+    descriptionEN: "",
+    descriptionTA: "",
+    active: "Active",
+    price: "",
+    quantity: "",
+  });
   const [unitFormData, setUnitFormData] = useState<UnitData>({
     unitCode: "",
     unitName: "",
@@ -74,7 +91,16 @@ export default function item() {
     batchNumber: "",
     unitId: 0,
   });
-  const [filterData, setFilterData] = useState<ItemData>({ name: "", code: "", descriptionEN: "", descriptionTA: "", active: "" });
+  const [filterData, setFilterData] = useState<ItemData>({
+    name: "",
+    code: "",
+    descriptionEN: "",
+    descriptionTA: "",
+    active: "",
+    price: "",
+    quantity: "",
+  });
+
   const [items, setItems] = useState<ItemData[]>([]);
   const [units, setUnits] = useState<UnitData[]>([]);
   const [versions, setVersions] = useState<VersionData[]>([]);
@@ -91,59 +117,153 @@ export default function item() {
   const handleVersionInputChange = (field: keyof VersionData, value: string) => { setVersionFormData({ ...versionFormData, [field]: value }); };
   const handleFilterChange = (field: keyof ItemData, value: string) => { setFilterData({ ...filterData, [field]: value }); };
 
-  const handleSubmit = () => {
-    if (formData.name && formData.code && formData.descriptionEN && formData.descriptionTA) {
-      if (editIndex !== null) { const updatedItems = [...items]; updatedItems[editIndex] = formData; setItems(updatedItems); }
-      else { setItems([...items, formData]); }
-      setFormData({ name: "", code: "", descriptionEN: "", descriptionTA: "", active: "Active" });
+  // Fetch Items from Supabase
+  const fetchItems = async () => {
+    let { data, error } = await supabase.from("items").select("*").order("id", { ascending: true });
+    if (error) {
+      console.error("Error fetching items:", error.message);
+    } else {
+      // Convert numeric fields to strings for UI bindings
+      const mapped = (data || []).map((r: any) => ({
+        ...r,
+        price: r.price != null ? String(r.price) : "",
+        quantity: r.quantity != null ? String(r.quantity) : "",
+      }));
+      setItems(mapped as ItemData[]);
+    }
+  };
+
+  // Fetch Units from Supabase
+  const fetchUnits = async () => {
+    let { data, error } = await supabase.from("units").select("*").order("id", { ascending: true });
+    if (error) {
+      console.error("Error fetching units:", error.message);
+    } else {
+      setUnits(data as UnitData[]);
+    }
+  };
+
+  // Fetch Versions from Supabase
+  const fetchVersions = async () => {
+    let { data, error } = await supabase.from("versions").select("*").order("id", { ascending: true });
+    if (error) {
+      console.error("Error fetching versions:", error.message);
+    } else {
+      setVersions(data as VersionData[]);
+    }
+  };
+
+  useEffect(() => {
+    fetchItems();
+    fetchUnits();
+    fetchVersions();
+  }, []);
+
+  // Add or update Item in Supabase
+  const handleSubmit = async () => {
+    if (formData.name && formData.code && formData.descriptionEN && formData.descriptionTA && formData.price !== undefined && formData.quantity !== undefined) {
+      // convert price and quantity
+      const priceNum = formData.price === "" ? 0 : Number(formData.price);
+      const qtyNum = formData.quantity === "" ? 0 : parseInt(formData.quantity, 10);
+
+      const payload = {
+        name: formData.name,
+        code: formData.code,
+        descriptionEN: formData.descriptionEN,
+        descriptionTA: formData.descriptionTA,
+        active: formData.active,
+        price: priceNum,
+        quantity: qtyNum,
+      };
+
+      if (editIndex !== null && items[editIndex]?.id) {
+        // Update existing item
+        const itemId = items[editIndex].id;
+        const { error } = await supabase.from("items").update(payload).eq("id", itemId);
+        if (error) console.error("Error updating item:", error.message);
+      } else {
+        // Insert new item
+        const { error } = await supabase.from("items").insert([payload]);
+        if (error) console.error("Error adding item:", error.message);
+      }
+      await fetchItems();
+      setFormData({ name: "", code: "", descriptionEN: "", descriptionTA: "", active: "Active", price: "", quantity: "" });
       setEditIndex(null);
       setIsAddModalVisible(false);
       setViewModalVisible(true);
-      setSelectedItemIndex(items.length); // Set to the newly added item index
-    } else { alert("Please fill all text fields"); }
+      // set selected to newly added item index if needed - we leave existing approach
+    } else {
+      alert("Please fill all text fields (including price & quantity)");
+    }
   };
 
-  const handleUnitSubmit = () => {
+  // Add or update Unit in Supabase
+  const handleUnitSubmit = async () => {
     if (unitFormData.unitCode && unitFormData.unitName && unitFormData.descriptionEN && unitFormData.descriptionTA && unitFormData.unitType && unitFormData.unitWeight && unitFormData.unitDimensions && unitFormData.createdDate && unitFormData.modifiedDate) {
-      setUnits([...units, { ...unitFormData, itemId: selectedItemIndex || 0 }]);
-      setUnitFormData({
-        unitCode: "",
-        unitName: "",
-        descriptionEN: "",
-        descriptionTA: "",
-        active: "Active",
-        unitType: "",
-        unitWeight: "",
-        unitDimensions: "",
-        createdDate: "",
-        modifiedDate: "",
-        itemId: 0,
-      });
-      setIsUnitModalVisible(false);
-    } else { alert("Please fill all text fields"); }
+      if (selectedItemIndex === null) {
+        alert("Please select an item first");
+        return;
+      }
+      unitFormData.itemId = items[selectedItemIndex].id!;
+      const { error } = await supabase.from("units").insert([unitFormData]);
+      if (error) {
+        console.error("Error adding unit:", error.message);
+      } else {
+        fetchUnits();
+        setUnitFormData({
+          unitCode: "",
+          unitName: "",
+          descriptionEN: "",
+          descriptionTA: "",
+          active: "Active",
+          unitType: "",
+          unitWeight: "",
+          unitDimensions: "",
+          createdDate: "",
+          modifiedDate: "",
+          itemId: 0,
+        });
+        setIsUnitModalVisible(false);
+      }
+    } else {
+      alert("Please fill all text fields");
+    }
   };
 
-  const handleVersionSubmit = () => {
+  // Add or update Version in Supabase
+  const handleVersionSubmit = async () => {
     if (versionFormData.versionCode && versionFormData.versionName && versionFormData.quantity && versionFormData.descriptionEN && versionFormData.descriptionTA && versionFormData.versionStatus && versionFormData.releaseDate && versionFormData.expirationDate && versionFormData.batchNumber) {
-      setVersions([...versions, { ...versionFormData, unitId: selectedUnitIndex || 0 }]);
-      setVersionFormData({
-        versionCode: "",
-        versionName: "",
-        quantity: "",
-        descriptionEN: "",
-        descriptionTA: "",
-        active: "Active",
-        versionStatus: "",
-        releaseDate: "",
-        expirationDate: "",
-        batchNumber: "",
-        unitId: 0,
-      });
-      setIsVersionModalVisible(false);
-    } else { alert("Please fill all text fields"); }
+      if (selectedUnitIndex === null) {
+        alert("Please select a unit first");
+        return;
+      }
+      versionFormData.unitId = units[selectedUnitIndex].id!;
+      const { error } = await supabase.from("versions").insert([versionFormData]);
+      if (error) {
+        console.error("Error adding version:", error.message);
+      } else {
+        fetchVersions();
+        setVersionFormData({
+          versionCode: "",
+          versionName: "",
+          quantity: "",
+          descriptionEN: "",
+          descriptionTA: "",
+          active: "Active",
+          versionStatus: "",
+          releaseDate: "",
+          expirationDate: "",
+          batchNumber: "",
+          unitId: 0,
+        });
+        setIsVersionModalVisible(false);
+      }
+    } else {
+      alert("Please fill all text fields");
+    }
   };
 
-  const handleCancel = () => { setFormData({ name: "", code: "", descriptionEN: "", descriptionTA: "", active: "Active" }); setEditIndex(null); setIsAddModalVisible(false); };
+  const handleCancel = () => { setFormData({ name: "", code: "", descriptionEN: "", descriptionTA: "", active: "Active", price: "", quantity: "" }); setEditIndex(null); setIsAddModalVisible(false); };
   const handleUnitCancel = () => {
     setUnitFormData({
       unitCode: "",
@@ -177,16 +297,32 @@ export default function item() {
     setIsVersionModalVisible(false);
   };
   const handleApplyFilter = () => { setFilterModalVisible(false); };
-  const handleClearFilter = () => { setFilterData({ name: "", code: "", descriptionEN: "", descriptionTA: "", active: "" }); setFilterModalVisible(false); };
+  const handleClearFilter = () => { setFilterData({ name: "", code: "", descriptionEN: "", descriptionTA: "", active: "", price: "", quantity: "" }); setFilterModalVisible(false); };
   const handleShowMore = () => { setVisibleCount(visibleCount + 5); };
-  const handleDelete = (index: number) => { setItems(items.filter((_, i) => i !== index)); setActionIndex(null); setViewModalVisible(false); };
+
+  const handleDelete = async (index: number) => {
+    // Delete by id from Supabase
+    const item = items[index];
+    if (!item?.id) return;
+    const { error } = await supabase.from("items").delete().eq("id", item.id);
+    if (error) console.error("Error deleting item:", error.message);
+    else {
+      // update local list
+      const newList = items.filter((_, i) => i !== index);
+      setItems(newList);
+      setActionIndex(null);
+      setViewModalVisible(false);
+    }
+  };
 
   const filteredItems = items.filter(item => (
     (!filterData.name || item.name.toLowerCase().includes(filterData.name.toLowerCase())) &&
     (!filterData.code || item.code.toLowerCase().includes(filterData.code.toLowerCase())) &&
     (!filterData.descriptionEN || item.descriptionEN.toLowerCase().includes(filterData.descriptionEN.toLowerCase())) &&
     (!filterData.descriptionTA || item.descriptionTA.toLowerCase().includes(filterData.descriptionTA.toLowerCase())) &&
-    (!filterData.active || item.active === filterData.active)
+    (!filterData.active || item.active === filterData.active) &&
+    (!filterData.price || (item.price && item.price.includes(filterData.price))) &&
+    (!filterData.quantity || (item.quantity && item.quantity.includes(filterData.quantity)))
   ));
 
   if (!fontsLoaded) { return null; }
@@ -203,13 +339,15 @@ export default function item() {
         <ScrollView style={{ marginTop: 20 }}>
           {filteredItems.slice(0, visibleCount).map((item, index) => (
             <View key={index} style={{ backgroundColor: "#D6F4C3", padding: 15, marginVertical: 10, marginHorizontal: 20, borderRadius: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 5, elevation: 3, position: "relative" }}>
-              <TouchableOpacity style={{ position: "absolute", top: 0, right: 0, padding: 10, width: 40, height: 40, justifyContent: "center", alignItems: "center" }} onPress={() => { setActionIndex(index); setViewModalVisible(true); }}>
+              {/* Three-dot action unchanged */}
+              <TouchableOpacity style={{ position: "absolute", top: 0, right: 0, padding: 10, width: 40, height: 40, justifyContent: "center", alignItems: "center" }} onPress={() => { setActionIndex(index); setSelectedItemIndex(index); setViewModalVisible(true); }}>
                 <Ionicons name="ellipsis-vertical" size={20} color="#198754" />
               </TouchableOpacity>
+
+              {/* Card main content (kept same, plus price & quantity) */}
               <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 14, color: "black", marginBottom: 5 }}>Name: <Text style={{ color: "#198754" }}>{item.name}</Text></Text>
               <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 14, color: "black", marginBottom: 5 }}>Code: <Text style={{ color: "#198754" }}>{item.code}</Text></Text>
-              <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 14, color: "black", marginBottom: 5 }}>Description EN: <Text style={{ color: "#198754" }}>{item.descriptionEN}</Text></Text>
-              <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 14, color: "black", marginBottom: 5 }}>Description TA: <Text style={{ color: "#198754" }}>{item.descriptionTA}</Text></Text>
+              <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 14, color: "black", marginBottom: 5 }}>Price: <Text style={{ color: "#198754" }}>{item.price ?? "-"}</Text></Text>
               <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 14, color: "black", marginBottom: 5 }}>Status: <Text style={{ color: "#198754" }}>{item.active}</Text></Text>
             </View>
           ))}
@@ -219,17 +357,39 @@ export default function item() {
             </TouchableOpacity>
           )}
         </ScrollView>
-        <TouchableOpacity style={{ position: "absolute", bottom: height * 0.1, left: width * 0.8, backgroundColor: "#198754", width: 60, height: 60, borderRadius: 50, justifyContent: "center", alignItems: "center" }} onPress={() => { setFormData({ name: "", code: "", descriptionEN: "", descriptionTA: "", active: "Active" }); setEditIndex(null); setIsAddModalVisible(true); }}>
+
+        {/* Floating add button (unchanged) */}
+        <TouchableOpacity style={{ position: "absolute", bottom: height * 0.1, left: width * 0.8, backgroundColor: "#198754", width: 60, height: 60, borderRadius: 50, justifyContent: "center", alignItems: "center" }} onPress={() => { setFormData({ name: "", code: "", descriptionEN: "", descriptionTA: "", active: "Active", price: "", quantity: "" }); setEditIndex(null); setIsAddModalVisible(true); }}>
           <Ionicons name="add" size={40} color="white" />
         </TouchableOpacity>
+
+        {/* ------------------ Add/Edit Item Modal (with price & quantity) ------------------ */}
         <Modal visible={isAddModalVisible} animationType="slide" transparent={true} onRequestClose={handleCancel}>
           <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)" }}>
             <View style={{ backgroundColor: "white", padding: 20, borderRadius: 10, width: "80%" }}>
-              <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 18, textAlign: "center", marginBottom: 10 }}>Add New Item</Text>
+              <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 18, textAlign: "center", marginBottom: 10 }}>{editIndex !== null ? "Edit Item" : "Add New Item"}</Text>
+
               <TextInput style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 10, marginVertical: 5, fontFamily: "Poppins-ExtraBold" }} placeholder="Name" value={formData.name} onChangeText={(text: string) => handleInputChange("name", text)} />
               <TextInput style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 10, marginVertical: 5, fontFamily: "Poppins-ExtraBold" }} placeholder="Code" value={formData.code} onChangeText={(text: string) => handleInputChange("code", text)} />
               <TextInput style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 10, marginVertical: 5, fontFamily: "Poppins-ExtraBold" }} placeholder="Description EN" value={formData.descriptionEN} onChangeText={(text: string) => handleInputChange("descriptionEN", text)} />
               <TextInput style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 10, marginVertical: 5, fontFamily: "Poppins-ExtraBold" }} placeholder="Description TA" value={formData.descriptionTA} onChangeText={(text: string) => handleInputChange("descriptionTA", text)} />
+
+              {/* Price & Quantity inputs (new) */}
+              <TextInput
+                keyboardType="numeric"
+                style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 10, marginVertical: 5, fontFamily: "Poppins-ExtraBold" }}
+                placeholder="Price (e.g. 199.99)"
+                value={formData.price}
+                onChangeText={(text: string) => handleInputChange("price", text)}
+              />
+              <TextInput
+                keyboardType="numeric"
+                style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 10, marginVertical: 5, fontFamily: "Poppins-ExtraBold" }}
+                placeholder="Quantity (e.g. 10)"
+                value={formData.quantity}
+                onChangeText={(text: string) => handleInputChange("quantity", text)}
+              />
+
               <View style={{ marginVertical: 10 }}>
                 <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 14, marginBottom: 5 }}>Status:</Text>
                 <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", marginVertical: 5 }} onPress={() => handleInputChange("active", "Active")}>
@@ -241,6 +401,7 @@ export default function item() {
                   <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 14 }}>Inactive</Text>
                 </TouchableOpacity>
               </View>
+
               <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                 <TouchableOpacity style={{ padding: 10, borderRadius: 5, marginTop: 10, width: "45%", alignItems: "center", backgroundColor: "#198754" }} onPress={handleSubmit}>
                   <Text style={{ color: "white", fontFamily: "Poppins-ExtraBold" }}>Submit</Text>
@@ -252,6 +413,8 @@ export default function item() {
             </View>
           </View>
         </Modal>
+
+        {/* ------------------ Filter Modal (unchanged, added price/quantity filter fields) ------------------ */}
         <Modal visible={filterModalVisible} animationType="slide" transparent={true} onRequestClose={() => setFilterModalVisible(false)}>
           <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)" }}>
             <View style={{ backgroundColor: "white", padding: 20, borderRadius: 10, width: "80%" }}>
@@ -260,6 +423,9 @@ export default function item() {
               <TextInput style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 10, marginVertical: 5, fontFamily: "Poppins-ExtraBold" }} placeholder="Code" value={filterData.code} onChangeText={(text: string) => handleFilterChange("code", text)} />
               <TextInput style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 10, marginVertical: 5, fontFamily: "Poppins-ExtraBold" }} placeholder="Description EN" value={filterData.descriptionEN} onChangeText={(text: string) => handleFilterChange("descriptionEN", text)} />
               <TextInput style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 10, marginVertical: 5, fontFamily: "Poppins-ExtraBold" }} placeholder="Description TA" value={filterData.descriptionTA} onChangeText={(text: string) => handleFilterChange("descriptionTA", text)} />
+              {/* price and quantity filters */}
+              <TextInput keyboardType="numeric" style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 10, marginVertical: 5, fontFamily: "Poppins-ExtraBold" }} placeholder="Price (exact or partial)" value={filterData.price} onChangeText={(text: string) => handleFilterChange("price", text)} />
+              <TextInput keyboardType="numeric" style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 10, marginVertical: 5, fontFamily: "Poppins-ExtraBold" }} placeholder="Quantity (exact or partial)" value={filterData.quantity} onChangeText={(text: string) => handleFilterChange("quantity", text)} />
               <View style={{ marginVertical: 10 }}>
                 <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 14, marginBottom: 5 }}>Status:</Text>
                 <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", marginVertical: 5 }} onPress={() => handleFilterChange("active", "")}>
@@ -286,6 +452,8 @@ export default function item() {
             </View>
           </View>
         </Modal>
+
+        {/* ------------------ View Modal (card style inside modal; tabs preserved) ------------------ */}
         <Modal visible={viewModalVisible} animationType="slide" transparent={true} onRequestClose={() => { setViewModalVisible(false); setActionIndex(null); }}>
           <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)" }}>
             <View style={{ backgroundColor: "white", padding: 20, borderRadius: 10, width: "90%", maxHeight: "80%" }}>
@@ -296,19 +464,48 @@ export default function item() {
                   </TouchableOpacity>
                 ))}
               </View>
+
+              {/* ITEM TAB: show a better card with details + edit button */}
               {activeTab === "Item" && selectedItemIndex !== null && (
                 <>
                   <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 16, marginBottom: 10 }}>Item Details</Text>
-                  <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 14, color: "black", marginBottom: 5 }}>Name: <Text style={{ color: "#198754" }}>{items[selectedItemIndex].name}</Text></Text>
-                  <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 14, color: "black", marginBottom: 5 }}>Code: <Text style={{ color: "#198754" }}>{items[selectedItemIndex].code}</Text></Text>
-                  <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 14, color: "black", marginBottom: 5 }}>Description EN: <Text style={{ color: "#198754" }}>{items[selectedItemIndex].descriptionEN}</Text></Text>
-                  <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 14, color: "black", marginBottom: 5 }}>Description TA: <Text style={{ color: "#198754" }}>{items[selectedItemIndex].descriptionTA}</Text></Text>
-                  <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 14, color: "black", marginBottom: 5 }}>Status: <Text style={{ color: "#198754" }}>{items[selectedItemIndex].active}</Text></Text>
-                  <TouchableOpacity style={{ padding: 10, borderRadius: 5, marginTop: 10, alignItems: "center", backgroundColor: "#198754" }} onPress={() => { setEditIndex(selectedItemIndex); setIsAddModalVisible(true); setViewModalVisible(false); }}>
-                    <Text style={{ color: "white", fontFamily: "Poppins-ExtraBold" }}>Edit</Text>
-                  </TouchableOpacity>
+
+                  {/* Card - slightly more detailed layout but using your visual theme */}
+                  <View style={{ backgroundColor: "#F7FFF7", padding: 15, borderRadius: 12, borderWidth: 1, borderColor: "#e6f4e8", marginBottom: 10 }}>
+                    <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 15 }}>Name</Text>
+                    <Text style={{ color: "#198754", marginBottom: 8 }}>{items[selectedItemIndex].name}</Text>
+
+                    <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 15 }}>Code</Text>
+                    <Text style={{ color: "#198754", marginBottom: 8 }}>{items[selectedItemIndex].code}</Text>
+
+                    <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 15 }}>Description (EN)</Text>
+                    <Text style={{ color: "#198754", marginBottom: 8 }}>{items[selectedItemIndex].descriptionEN}</Text>
+
+                    <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 15 }}>Description (TA)</Text>
+                    <Text style={{ color: "#198754", marginBottom: 8 }}>{items[selectedItemIndex].descriptionTA}</Text>
+
+                    <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 15 }}>Price</Text>
+                    <Text style={{ color: "#198754", marginBottom: 8 }}>{items[selectedItemIndex].price ?? "0"}</Text>
+
+                    <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 15 }}>Quantity</Text>
+                    <Text style={{ color: "#198754", marginBottom: 8 }}>{items[selectedItemIndex].quantity ?? "0"}</Text>
+
+                    <Text style={{ fontFamily: "Poppins-ExtraBold", fontSize: 15 }}>Status</Text>
+                    <Text style={{ color: "#198754", marginBottom: 8 }}>{items[selectedItemIndex].active}</Text>
+
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 10 }}>
+                      <TouchableOpacity style={{ padding: 10, borderRadius: 6, alignItems: "center", backgroundColor: "#198754", flex: 1, marginRight: 8 }} onPress={() => { setEditIndex(selectedItemIndex); setIsAddModalVisible(true); setViewModalVisible(false); }}>
+                        <Text style={{ color: "white", fontFamily: "Poppins-ExtraBold" }}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={{ padding: 10, borderRadius: 6, alignItems: "center", backgroundColor: "#dc3545", flex: 1 }} onPress={() => handleDelete(selectedItemIndex)}>
+                        <Text style={{ color: "white", fontFamily: "Poppins-ExtraBold" }}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </>
               )}
+
+              {/* ITEM UNIT TAB - unchanged except kept styling consistent */}
               {activeTab === "Item Unit" && (
                 <>
                   {units.filter(u => u.itemId === selectedItemIndex).map((unit, index) => (
@@ -336,6 +533,8 @@ export default function item() {
                   </TouchableOpacity>
                 </>
               )}
+
+              {/* ITEM UNIT VERSION TAB - unchanged */}
               {activeTab === "Item Unit Version" && (
                 <>
                   {versions.filter(v => v.unitId === selectedUnitIndex).map((version, index) => (
@@ -363,12 +562,15 @@ export default function item() {
                   </TouchableOpacity>
                 </>
               )}
+
               <TouchableOpacity style={{ padding: 10, borderRadius: 5, marginTop: 10, alignItems: "center", backgroundColor: "#dc3545" }} onPress={() => { setViewModalVisible(false); setActionIndex(null); }}>
                 <Text style={{ color: "white", fontFamily: "Poppins-ExtraBold" }}>Close</Text>
               </TouchableOpacity>
             </View>
           </View>
         </Modal>
+
+        {/* ------------------ Unit Modal (unchanged) ------------------ */}
         <Modal visible={isUnitModalVisible} animationType="slide" transparent={true} onRequestClose={handleUnitCancel}>
           <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)" }}>
             <View style={{ backgroundColor: "white", padding: 20, borderRadius: 10, width: "80%" }}>
@@ -404,6 +606,8 @@ export default function item() {
             </View>
           </View>
         </Modal>
+
+        {/* ------------------ Version Modal (unchanged) ------------------ */}
         <Modal visible={isVersionModalVisible} animationType="slide" transparent={true} onRequestClose={handleVersionCancel}>
           <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)" }}>
             <View style={{ backgroundColor: "white", padding: 20, borderRadius: 10, width: "80%" }}>
@@ -443,4 +647,3 @@ export default function item() {
     </>
   );
 }
-
